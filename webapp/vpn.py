@@ -251,7 +251,7 @@ class VPNManager:
 
         # Also try killing any remaining openvpn processes
         subprocess.run(
-            ["killall", "-q", "openvpn"],
+            ["pkill", "-f", "openvpn"],
             capture_output=True, timeout=5,
         )
 
