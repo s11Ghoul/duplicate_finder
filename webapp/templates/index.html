@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Phishing Detector — New Scan{% endblock %}
+
+{% block content %}
+<div class="container">
+    <h1>Phishing Site Scanner</h1>
+
+    <form id="scan-form" class="card">
+        <h2>New Scan</h2>
+
+        <div class="form-group">
+            <label for="brands">Brands (one per line)</label>
+            <textarea id="brands" rows="4" placeholder="1xbet&#10;betway&#10;pin-up"></textarea>
+        </div>
+
+        <div class="form-group">
+            <label for="countries">Countries</label>
+            <div class="country-select">
+                <input type="text" id="country-search" placeholder="Search countries..."
+                       autocomplete="off">
+                <div class="country-list" id="country-list">
+                    {% for code, name in countries %}
+                    <label class="country-item">
+                        <input type="checkbox" name="countries" value="{{ code }}">
+                        <span>{{ name }} ({{ code }})</span>
+                    </label>
+                    {% endfor %}
+                </div>
+                <div class="selected-countries" id="selected-countries"></div>
+            </div>
+        </div>
+
+        <button type="submit" class="btn btn-primary" id="submit-btn">
+            Start Scan
+        </button>
+        <div id="form-error" class="error" style="display:none"></div>
+    </form>
+
+    {% if jobs %}
+    <div class="card">
+        <h2>Recent Jobs</h2>
+        <table class="jobs-table">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Brands</th>
+                    <th>Countries</th>
+                    <th>Status</th>
+                    <th>Created</th>
+                    <th></th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for job in jobs %}
+                <tr>
+                    <td><code>{{ job.id[:8] }}</code></td>
+                    <td>{{ job.brands | join(', ') }}</td>
+                    <td>{{ job.countries | join(', ') }}</td>
+                    <td>
+                        <span class="badge badge-{{ job.status }}">{{ job.status }}</span>
+                    </td>
+                    <td>{{ job.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                    <td><a href="/jobs/{{ job.id }}" class="btn btn-sm">View</a></td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}

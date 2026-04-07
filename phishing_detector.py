@@ -136,8 +136,13 @@ def create_driver(
 # ---------------------------------------------------------------------------
 
 
-def check_and_handle_captcha(driver: webdriver.Chrome):
-    """Detect Google CAPTCHA and pause for manual solving."""
+def check_and_handle_captcha(driver: webdriver.Chrome, mode: str = "interactive") -> bool:
+    """Detect Google CAPTCHA. Returns True if CAPTCHA was detected.
+
+    Modes:
+        - "interactive": pause and wait for user input (CLI usage)
+        - "server": return True immediately without blocking (server usage)
+    """
     captcha_indicators = [
         "sorry/index",
         "recaptcha",
@@ -152,13 +157,18 @@ def check_and_handle_captcha(driver: webdriver.Chrome):
     )
 
     if is_captcha:
-        print("\n" + "=" * 60)
-        print("  CAPTCHA DETECTED!")
-        print("  Please solve the CAPTCHA in the browser window.")
-        print("  Press ENTER here when done...")
-        print("=" * 60)
-        input()
-        time.sleep(2)
+        if mode == "interactive":
+            print("\n" + "=" * 60)
+            print("  CAPTCHA DETECTED!")
+            print("  Please solve the CAPTCHA in the browser window.")
+            print("  Press ENTER here when done...")
+            print("=" * 60)
+            input()
+            time.sleep(2)
+            return False  # Solved by user
+        return True  # Server mode: signal CAPTCHA to caller
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -171,10 +181,14 @@ def google_search(
     query: str,
     country_config: dict,
     num_results: int = 10,
-) -> list[str]:
+    captcha_mode: str = "interactive",
+) -> tuple[list[str], bool]:
     """
     Perform a Google search and return up to `num_results` organic result URLs.
     Uses the country-specific Google domain and geo parameters.
+
+    Returns:
+        (urls, captcha_detected) — list of URLs and whether CAPTCHA was hit.
     """
     domain = country_config["domain"]
     gl = country_config["gl"]
@@ -186,7 +200,9 @@ def google_search(
     driver.get(search_url)
     random_delay(DELAY_PAGE_LOAD)
 
-    check_and_handle_captcha(driver)
+    captcha_hit = check_and_handle_captcha(driver, mode=captcha_mode)
+    if captcha_hit:
+        return [], True
 
     # Accept cookies dialog if present
     try:
@@ -239,7 +255,7 @@ def google_search(
         except Exception:
             pass
 
-    return urls[:num_results]
+    return urls[:num_results], False
 
 
 # ---------------------------------------------------------------------------
@@ -435,7 +451,7 @@ def run_scan(
             print(f"\n[{q_idx + 1}/{len(queries)}] Query: '{query}'")
             print("-" * 50)
 
-            urls = google_search(driver, query, country)
+            urls, _captcha = google_search(driver, query, country)
 
             if not urls:
                 print("  No results found.")

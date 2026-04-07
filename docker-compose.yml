@@ -1,0 +1,21 @@
+services:
+  scanner:
+    build: .
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun
+    ports:
+      - "5000:5000"   # Web UI
+      - "6080:6080"   # noVNC (browser access for CAPTCHA solving)
+    volumes:
+      - ./results:/app/results
+    environment:
+      - PYTHONUNBUFFERED=1
+    # DNS via VPN
+    dns:
+      - 1.1.1.1
+      - 8.8.8.8
+    sysctls:
+      - net.ipv6.conf.all.disable_ipv6=0
+    restart: unless-stopped

@@ -1,0 +1,72 @@
+{% extends "base.html" %}
+{% block title %}Job {{ job.id[:8] }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <a href="/" class="back-link">&larr; Back to dashboard</a>
+
+    <div class="card">
+        <div class="job-header">
+            <h1>Job <code>{{ job.id[:8] }}</code></h1>
+            <span class="badge badge-{{ job.status }}" id="job-status">{{ job.status }}</span>
+        </div>
+
+        <div class="job-meta">
+            <div><strong>Brands:</strong> {{ job.brands | join(', ') }}</div>
+            <div><strong>Countries:</strong> {{ job.countries | join(', ') }}</div>
+            <div><strong>Created:</strong> {{ job.created_at.strftime('%Y-%m-%d %H:%M:%S') }}</div>
+        </div>
+    </div>
+
+    <!-- Progress -->
+    <div class="card" id="progress-card">
+        <h2>Progress</h2>
+        <div class="progress-bar-container">
+            <div class="progress-bar" id="progress-bar" style="width: 0%"></div>
+        </div>
+        <div class="progress-stats" id="progress-stats">
+            <span id="stat-brand">Brand: -</span>
+            <span id="stat-country">Country: -</span>
+            <span id="stat-query">Query: -</span>
+            <span id="stat-sites">Sites: 0</span>
+            <span id="stat-suspicious">Suspicious: 0</span>
+        </div>
+    </div>
+
+    <!-- CAPTCHA Alert -->
+    <div class="card captcha-alert" id="captcha-alert" style="display:none">
+        <h2>CAPTCHA Detected</h2>
+        <p>
+            Google is showing a CAPTCHA. Please solve it via
+            <a href="http://{{ request.host.split(':')[0] }}:6080/vnc.html" target="_blank"
+               class="btn btn-sm">Open noVNC</a>
+            then click the button below.
+        </p>
+        <button class="btn btn-primary" onclick="solveCaptcha('{{ job.id }}')">
+            CAPTCHA Solved
+        </button>
+    </div>
+
+    <!-- Results -->
+    <div class="card" id="results-card" style="display:none">
+        <h2>Results</h2>
+        <div id="results-list"></div>
+    </div>
+
+    <!-- Log -->
+    <div class="card">
+        <h2>Log</h2>
+        <div class="log-area" id="log-area">
+            {% for entry in job.log %}
+            <div class="log-line">{{ entry }}</div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+    startSSE('{{ job.id }}');
+</script>
+{% endblock %}
