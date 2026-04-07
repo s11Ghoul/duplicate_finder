@@ -100,15 +100,28 @@ def random_delay(range_tuple: tuple[float, float]):
     time.sleep(random.uniform(*range_tuple))
 
 
-def create_driver() -> webdriver.Chrome:
+def create_driver(
+    headless: bool = False, chrome_binary: str | None = None
+) -> webdriver.Chrome:
     """Create a Chrome WebDriver instance with appropriate settings."""
     options = Options()
     options.add_argument("--start-maximized")
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    # Keep browser open for CAPTCHA solving
-    options.add_experimental_option("detach", True)
+
+    if chrome_binary:
+        options.binary_location = chrome_binary
+
+    if headless:
+        options.add_argument("--headless=new")
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--window-size=1920,1080")
+    else:
+        # Keep browser open for CAPTCHA solving (only in GUI mode)
+        options.add_experimental_option("detach", True)
 
     driver = webdriver.Chrome(options=options)
     # Remove webdriver flag to reduce detection
@@ -382,7 +395,13 @@ def check_site_redirect(
 # ---------------------------------------------------------------------------
 
 
-def run_scan(brand: str, country_str: str, output_file: str | None = None):
+def run_scan(
+    brand: str,
+    country_str: str,
+    output_file: str | None = None,
+    headless: bool = False,
+    chrome_binary: str | None = None,
+):
     """Run the full phishing detection scan."""
     country = resolve_country(country_str)
     if not country:
@@ -409,7 +428,7 @@ def run_scan(brand: str, country_str: str, output_file: str | None = None):
     print()
 
     results = []
-    driver = create_driver()
+    driver = create_driver(headless=headless, chrome_binary=chrome_binary)
 
     try:
         for q_idx, query in enumerate(queries):
@@ -519,6 +538,16 @@ def main():
         "--output", type=str, help="Output CSV file path (auto-generated if omitted)"
     )
     parser.add_argument(
+        "--headless",
+        action="store_true",
+        help="Run browser in headless mode (no GUI)",
+    )
+    parser.add_argument(
+        "--chrome-binary",
+        type=str,
+        help="Path to Chrome/Chromium binary",
+    )
+    parser.add_argument(
         "--list-countries",
         action="store_true",
         help="List all supported countries and exit",
@@ -547,7 +576,7 @@ def main():
             print("Error: Country is required.")
             sys.exit(1)
 
-    run_scan(brand, country, args.output)
+    run_scan(brand, country, args.output, args.headless, args.chrome_binary)
 
 
 if __name__ == "__main__":
