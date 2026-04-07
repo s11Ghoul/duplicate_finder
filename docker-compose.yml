@@ -10,16 +10,12 @@ services:
       - "6080:6080"   # noVNC (browser access for CAPTCHA solving)
     volumes:
       - ./results:/app/results
-      - protonvpn-config:/root/.pvpn-cli   # Persist VPN login between restarts
+      - ./vpn-configs:/app/vpn-configs   # Proton VPN OpenVPN config files
     environment:
       - PYTHONUNBUFFERED=1
-    # DNS via VPN
     dns:
       - 1.1.1.1
       - 8.8.8.8
     sysctls:
       - net.ipv6.conf.all.disable_ipv6=0
     restart: unless-stopped
-
-volumes:
-  protonvpn-config:

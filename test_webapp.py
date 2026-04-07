@@ -55,92 +55,103 @@ class TestScanJob(unittest.TestCase):
 
 
 class TestVPNManager(unittest.TestCase):
-    """Test VPN manager with mocked subprocess calls."""
+    """Test VPN manager with mocked filesystem and subprocess."""
 
-    def _mock_run(self, stdout="", stderr="", returncode=0):
-        mock = MagicMock()
-        mock.stdout = stdout
-        mock.stderr = stderr
-        mock.returncode = returncode
-        return mock
+    def setUp(self):
+        import tempfile
+        self.tmpdir = tempfile.mkdtemp()
+        # Create fake credentials file
+        self.creds_file = os.path.join(self.tmpdir, "credentials.txt")
+        with open(self.creds_file, "w") as f:
+            f.write("testuser\ntestpass\n")
 
-    @patch("subprocess.run")
-    def test_status_connected(self, mock_run):
-        mock_run.return_value = self._mock_run(
-            stdout=(
-                "Status:     Connected\n"
-                "Server:     DE#42\n"
-                "Country:    Germany\n"
-                "IP:         185.1.2.3\n"
-            )
+    def tearDown(self):
+        import shutil
+        shutil.rmtree(self.tmpdir, ignore_errors=True)
+
+    def _create_config(self, name: str):
+        """Create a fake .ovpn config file."""
+        path = os.path.join(self.tmpdir, name)
+        with open(path, "w") as f:
+            f.write("# fake ovpn config\n")
+        return path
+
+    def test_find_config_by_country(self):
+        self._create_config("de-01.protonvpn.udp.ovpn")
+        self._create_config("us-05.protonvpn.udp.ovpn")
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
+        config = vpn._find_config("DE")
+        self.assertIn("de-", config)
+
+    def test_find_config_not_found(self):
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
+        with self.assertRaises(VPNError) as ctx:
+            vpn._find_config("XX")
+        self.assertIn("No OpenVPN config", str(ctx.exception))
+
+    def test_find_config_prefers_udp(self):
+        self._create_config("de-01.protonvpn.tcp.ovpn")
+        self._create_config("de-02.protonvpn.udp.ovpn")
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
+        config = vpn._find_config("DE")
+        self.assertIn("udp", config)
+
+    def test_list_available_countries(self):
+        self._create_config("de-01.protonvpn.udp.ovpn")
+        self._create_config("us-05.protonvpn.udp.ovpn")
+        self._create_config("tr-03.protonvpn.tcp.ovpn")
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
+        countries = vpn.list_available_countries()
+        self.assertEqual(countries, ["DE", "TR", "US"])
+
+    def test_list_available_countries_empty(self):
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
+        self.assertEqual(vpn.list_available_countries(), [])
+
+    def test_validate_credentials_missing(self):
+        vpn = VPNManager(
+            configs_dir=self.tmpdir,
+            credentials_file=os.path.join(self.tmpdir, "nonexistent.txt"),
         )
-        vpn = VPNManager()
-        s = vpn.status()
-        self.assertTrue(s["connected"])
-        self.assertEqual(s["country"], "Germany")
-        self.assertEqual(s["server"], "DE#42")
-        self.assertEqual(s["ip"], "185.1.2.3")
+        with self.assertRaises(VPNError) as ctx:
+            vpn._validate_credentials()
+        self.assertIn("not found", str(ctx.exception))
 
-    @patch("subprocess.run")
-    def test_status_disconnected(self, mock_run):
-        mock_run.return_value = self._mock_run(
-            stdout="Status:     Disconnected\nNo active connection."
-        )
-        vpn = VPNManager()
+    def test_validate_credentials_empty(self):
+        empty_creds = os.path.join(self.tmpdir, "empty.txt")
+        with open(empty_creds, "w") as f:
+            f.write("\n")
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=empty_creds)
+        with self.assertRaises(VPNError) as ctx:
+            vpn._validate_credentials()
+        self.assertIn("2 lines", str(ctx.exception))
+
+    def test_validate_credentials_valid(self):
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
+        vpn._validate_credentials()  # Should not raise
+
+    def test_status_disconnected(self):
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
         s = vpn.status()
         self.assertFalse(s["connected"])
+        self.assertIsNone(s["country"])
 
-    @patch("subprocess.run")
-    def test_connect_success(self, mock_run):
-        # First call: connect command, second: status poll
-        mock_run.side_effect = [
-            self._mock_run(stdout="Connected to DE#42"),
-            self._mock_run(
-                stdout="Status:     Connected\nServer:     DE#42\nIP: 1.2.3.4"
-            ),
-        ]
-        vpn = VPNManager()
-        result = vpn.connect("DE", timeout=5)
-        self.assertTrue(result)
-
-    @patch("subprocess.run")
-    def test_connect_failure(self, mock_run):
-        mock_run.return_value = self._mock_run(
-            returncode=1, stderr="Authentication failed"
-        )
-        vpn = VPNManager()
-        with self.assertRaises(VPNError):
-            vpn.connect("DE", timeout=5)
-
-    @patch("subprocess.run")
+    @patch("webapp.vpn.VPNManager._is_tun_up", return_value=False)
     @patch("webapp.vpn.time.sleep")
-    def test_disconnect(self, mock_sleep, mock_run):
-        mock_run.side_effect = [
-            self._mock_run(stdout="Disconnected"),
-            self._mock_run(stdout="Status:     Disconnected"),
-        ]
-        vpn = VPNManager()
+    @patch("subprocess.run")
+    def test_disconnect(self, mock_run, mock_sleep, mock_tun):
+        mock_run.return_value = MagicMock(returncode=0)
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
         result = vpn.disconnect()
         self.assertTrue(result)
 
-    @patch("subprocess.run")
-    def test_ensure_connected_already_connected(self, mock_run):
-        mock_run.return_value = self._mock_run(
-            stdout="Status:     Connected\nServer:     DE#42\nIP: 1.2.3.4"
-        )
-        vpn = VPNManager()
-        result = vpn.ensure_connected("DE")
+    def test_ensure_connected_already_connected(self):
+        vpn = VPNManager(configs_dir=self.tmpdir, credentials_file=self.creds_file)
+        self._create_config("de-01.protonvpn.udp.ovpn")
+        vpn._connected_country = "DE"
+        with patch.object(vpn, "_is_tun_up", return_value=True):
+            result = vpn.ensure_connected("DE")
         self.assertTrue(result)
-        # Should only call status, no connect
-        self.assertEqual(mock_run.call_count, 1)
-
-    @patch("subprocess.run")
-    def test_cli_not_found(self, mock_run):
-        mock_run.side_effect = FileNotFoundError()
-        vpn = VPNManager()
-        with self.assertRaises(VPNError) as ctx:
-            vpn.status()
-        self.assertIn("not found", str(ctx.exception))
 
 
 class TestFlaskApp(unittest.TestCase):

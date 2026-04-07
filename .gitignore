@@ -2,3 +2,6 @@ __pycache__/
 *.pyc
 *.pyo
 *.csv
+results/
+vpn-configs/*.ovpn
+vpn-configs/credentials.txt
